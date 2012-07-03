@@ -1,3 +1,9 @@
+ruby1.9.1 (1:1.9.3.194-1litmus1) oneiric; urgency=low
+
+  * Test build for litmus without funny-falcon patches
+
+ -- John Leach <john@brightbox.co.uk>  Mon, 25 Jun 2012 11:21:54 +0100
+
 ruby1.9.1 (1:1.9.3.194-1bbox1) lucid; urgency=low
 
   * Updated funny-falcon's performance patches
