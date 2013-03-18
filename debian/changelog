@@ -1,4 +1,10 @@
-ruby1.9.1 (1:1.9.3.392-1bbox1) precise; urgency=high
+ruby1.9.1 (1:1.9.3.392-1bbox1~tcmalloc1) precise; urgency=low
+
+  * Testing tcmalloc compilation
+
+ -- John Leach <john@brightbox.co.uk>  Mon, 18 Mar 2013 13:23:33 +0000
+
+ruby1.9.1 (1:1.9.3.392-1bbox1~raring1) raring; urgency=high
 
   * New upstream release, 1.9.3-p392 with security fixes
 
