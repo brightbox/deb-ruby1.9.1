@@ -1,0 +1,80 @@
+diff --git a/gc.c b/gc.c
+index 4c4f29a..1d3ac79 100644
+--- a/gc.c
++++ b/gc.c
+@@ -377,7 +377,6 @@ typedef struct rb_objspace {
+ 	int dont_gc;
+ 	int dont_lazy_sweep;
+ 	int during_gc;
+-	rb_atomic_t finalizing;
+     } flags;
+     struct {
+ 	st_table *table;
+@@ -416,7 +415,6 @@ int *ruby_initial_gc_stress_ptr = &rb_objspace.gc_stress;
+ #define heaps_freed		objspace->heap.freed
+ #define dont_gc 		objspace->flags.dont_gc
+ #define during_gc		objspace->flags.during_gc
+-#define finalizing		objspace->flags.finalizing
+ #define finalizer_table 	objspace->final.table
+ #define deferred_final_list	objspace->final.deferred
+ #define global_List		objspace->global_list
+@@ -2177,7 +2175,7 @@ slot_sweep(rb_objspace_t *objspace, struct heaps_slot *sweep_slot)
+     }
+     objspace->heap.final_num += final_num;
+ 
+-    if (deferred_final_list && !finalizing) {
++    if (deferred_final_list) {
+         rb_thread_t *th = GET_THREAD();
+         if (th) {
+             RUBY_VM_SET_FINALIZER_INTERRUPT(th);
+@@ -3044,9 +3042,10 @@ run_final(rb_objspace_t *objspace, VALUE obj)
+ static void
+ finalize_deferred(rb_objspace_t *objspace)
+ {
+-    RVALUE *p;
++    RVALUE *p = deferred_final_list;
++    deferred_final_list = 0;
+ 
+-    while ((p = ATOMIC_PTR_EXCHANGE(deferred_final_list, 0)) != 0) {
++    if (p) {
+ 	finalize_list(objspace, p);
+     }
+ }
+@@ -3054,10 +3053,7 @@ finalize_deferred(rb_objspace_t *objspace)
+ void
+ rb_gc_finalize_deferred(void)
+ {
+-    rb_objspace_t *objspace = &rb_objspace;
+-    if (ATOMIC_EXCHANGE(finalizing, 1)) return;
+-    finalize_deferred(objspace);
+-    ATOMIC_SET(finalizing, 0);
++    finalize_deferred(&rb_objspace);
+ }
+ 
+ struct force_finalize_list {
+@@ -3097,8 +3093,6 @@ rb_objspace_call_finalizer(rb_objspace_t *objspace)
+     finalize_deferred(objspace);
+     assert(deferred_final_list == 0);
+ 
+-    if (ATOMIC_EXCHANGE(finalizing, 1)) return;
+-
+     /* force to run finalizer */
+     while (finalizer_table->num_entries) {
+ 	struct force_finalize_list *list = 0;
+@@ -3153,7 +3147,6 @@ rb_objspace_call_finalizer(rb_objspace_t *objspace)
+ 
+     st_free_table(finalizer_table);
+     finalizer_table = 0;
+-    ATOMIC_SET(finalizing, 0);
+ }
+ 
+ void
+@@ -3161,7 +3154,7 @@ rb_gc(void)
+ {
+     rb_objspace_t *objspace = &rb_objspace;
+     garbage_collect(objspace);
+-    if (!finalizing) finalize_deferred(objspace);
++    finalize_deferred(objspace);
+     free_unused_heaps(objspace);
+ }
+ 

@@ -14,6 +14,7 @@
 110829-freebsd_assert_normal_exit.patch
 110829-hurd_dirent_usage.patch
 hurd-path-max.diff
+combined-gc-changes-reversed.patch
 20130602_funnyfalcon_gc_backport.patch
 09-faster-loading.patch
 10-falcon-st-opt.patch
