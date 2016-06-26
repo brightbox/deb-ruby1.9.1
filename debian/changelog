@@ -1,3 +1,9 @@
+ruby1.9.1 (1:1.9.3.551-3bbox1~xenial1) xenial; urgency=low
+
+  * Add 20160626-openssl-test-updates.patch to fix openssl tests on Xenial
+
+ -- John Leach <john@brightbox.co.uk>  Sun, 26 Jun 2016 19:37:12 +0100
+
 ruby1.9.1 (1:1.9.3.551-2bbox1~trusty1) trusty; urgency=medium
 
   * Add ruby_1_9_3-p551-fixes-2015-04-14.patch
