@@ -1,0 +1,549 @@
+diff --git a/test/openssl/test_cipher.rb b/test/openssl/test_cipher.rb
+index eb2f4fe..1fe4182 100644
+--- a/test/openssl/test_cipher.rb
++++ b/test/openssl/test_cipher.rb
+@@ -72,7 +72,13 @@ class OpenSSL::TestCipher < Test::Unit::TestCase
+   if OpenSSL::OPENSSL_VERSION_NUMBER > 0x00907000
+     def test_ciphers
+       OpenSSL::Cipher.ciphers.each{|name|
+-        assert(OpenSSL::Cipher::Cipher.new(name).is_a?(OpenSSL::Cipher::Cipher))
++        next if /netbsd/ =~ RUBY_PLATFORM && /idea|rc5/i =~ name
++        begin
++          assert_kind_of(OpenSSL::Cipher::Cipher, OpenSSL::Cipher::Cipher.new(name))
++        rescue OpenSSL::Cipher::CipherError => e
++          next if /wrap/ =~ name and e.message == 'wrap mode not allowed'
++          raise
++        end
+       }
+     end
+ 
+diff --git a/test/openssl/test_config.rb b/test/openssl/test_config.rb
+index 1ed455c..88bb5af 100644
+--- a/test/openssl/test_config.rb
++++ b/test/openssl/test_config.rb
+@@ -12,10 +12,16 @@ dir = ./demoCA
+ certs                =                  ./certs
+ __EOD__
+     file.close
++    @tmpfile = file
+     @it = OpenSSL::Config.new(file.path)
+   end
+ 
++  def teardown
++    @tmpfile.unlink
++  end
++
+   def test_constants
++    assert(defined?(OpenSSL::Config::DEFAULT_CONFIG_FILE))
+     config_file = OpenSSL::Config::DEFAULT_CONFIG_FILE
+     skip "DEFAULT_CONFIG_FILE may return a wrong path on your platforms. [Bug #6830]" unless File.readable?(config_file)
+     assert_nothing_raised do
+@@ -120,6 +126,8 @@ __EOC__
+     c = OpenSSL::Config.load(file.path)
+     assert_equal("[ default ]\n\n", c.to_s)
+     assert_equal(['default'], c.sections)
++  ensure
++    file.unlink if file
+   end
+ 
+   def test_initialize
+@@ -134,6 +142,8 @@ __EOC__
+     c = OpenSSL::Config.new(file.path)
+     assert_equal("[ default ]\n\n", c.to_s)
+     assert_equal(['default'], c.sections)
++  ensure
++    file.unlink if file
+   end
+ 
+   def test_initialize_with_example_file
+diff --git a/test/openssl/test_engine.rb b/test/openssl/test_engine.rb
+index 6d90e34..46a2948 100644
+--- a/test/openssl/test_engine.rb
++++ b/test/openssl/test_engine.rb
+@@ -1,15 +1,75 @@
+ require_relative 'utils'
+ 
+-if defined?(OpenSSL)
+-
+ class OpenSSL::TestEngine < Test::Unit::TestCase
+ 
++  def teardown
++    OpenSSL::Engine.cleanup # [ruby-core:40669]
++    assert_equal(0, OpenSSL::Engine.engines.size)
++  end
++
+   def test_engines_free # [ruby-dev:44173]
+-    OpenSSL::Engine.load
++    OpenSSL::Engine.load("openssl")
+     OpenSSL::Engine.engines
+     OpenSSL::Engine.engines
+   end
+ 
+-end
++  def test_openssl_engine_builtin
++    engine = OpenSSL::Engine.load("openssl")
++    assert_equal(true, engine)
++    assert_equal(1, OpenSSL::Engine.engines.size)
++  end
++
++  def test_openssl_engine_by_id_string
++    engine = get_engine
++    assert_not_nil(engine)
++    assert_equal(1, OpenSSL::Engine.engines.size)
++  end
++
++  def test_openssl_engine_id_name_inspect
++    engine = get_engine
++    assert_equal("openssl", engine.id)
++    assert_not_nil(engine.name)
++    assert_not_nil(engine.inspect)
++  end
++
++  def test_openssl_engine_digest_sha1
++    engine = get_engine
++    digest = engine.digest("SHA1")
++    assert_not_nil(digest)
++    data = "test"
++    assert_equal(OpenSSL::Digest::SHA1.digest(data), digest.digest(data))
++  end
++
++  def test_openssl_engine_cipher_rc4
++    engine = get_engine
++    algo = "RC4" #AES is not supported by openssl Engine (<=1.0.0e)
++    data = "a" * 1000
++    key = OpenSSL::Random.random_bytes(16)
++    # suppress message from openssl Engine's RC4 cipher [ruby-core:41026]
++    err_back = $stderr.dup
++    $stderr.reopen(IO::NULL)
++    encrypted = crypt_data(data, key, :encrypt) { engine.cipher(algo) }
++    decrypted = crypt_data(encrypted, key, :decrypt) { OpenSSL::Cipher.new(algo) }
++    assert_equal(data, decrypted)
++  ensure
++    if err_back
++      $stderr.reopen(err_back)
++      err_back.close
++    end
++  end
++
++  private
++
++  def get_engine
++    OpenSSL::Engine.by_id("openssl")
++  end
++
++  def crypt_data(data, key, mode)
++    cipher = yield
++    cipher.send mode
++    cipher.key = key
++    cipher.update(data) + cipher.final
++  end
++
++end if defined?(OpenSSL)
+ 
+-end
+diff --git a/test/openssl/test_ns_spki.rb b/test/openssl/test_ns_spki.rb
+index 3bcf3e6..7cddefa 100644
+--- a/test/openssl/test_ns_spki.rb
++++ b/test/openssl/test_ns_spki.rb
+@@ -30,6 +30,7 @@ class OpenSSL::TestNSSPI < Test::Unit::TestCase
+     assert_equal("RandomString", spki.challenge)
+     assert_equal(key1.public_key.to_der, spki.public_key.to_der)
+     assert(spki.verify(spki.public_key))
++    assert_not_nil(spki.to_text)
+   end
+ 
+   def test_decode_data
+diff --git a/test/openssl/test_pkcs12.rb b/test/openssl/test_pkcs12.rb
+index 64e7530..25ff606 100644
+--- a/test/openssl/test_pkcs12.rb
++++ b/test/openssl/test_pkcs12.rb
+@@ -16,7 +16,7 @@ module OpenSSL
+         ["subjectKeyIdentifier","hash",false],
+         ["authorityKeyIdentifier","keyid:always",false],
+       ]
+-      
++
+       @cacert = issue_cert(ca, TEST_KEY_RSA2048, 1, now, now+3600, ca_exts,
+                             nil, nil, OpenSSL::Digest::SHA1.new)
+ 
+@@ -40,7 +40,7 @@ Li8JsX5yIiuVYaBg/6ha3tOg4TCa5K/3r3tVliRZ2Es=
+       _EOS_
+ 
+       @inter_cacert = issue_cert(inter_ca, inter_ca_key, 2, now, now+3600, ca_exts,
+-                                 @ca_cert, TEST_KEY_RSA2048, OpenSSL::Digest::SHA1.new)
++                                 @cacert, TEST_KEY_RSA2048, OpenSSL::Digest::SHA1.new)
+ 
+       exts = [
+         ["keyUsage","digitalSignature",true],
+@@ -108,7 +108,7 @@ Li8JsX5yIiuVYaBg/6ha3tOg4TCa5K/3r3tVliRZ2Es=
+       assert_equal chain.size, decoded.ca_certs.size
+       assert_include_cert @cacert, decoded.ca_certs
+       assert_include_cert @inter_cacert, decoded.ca_certs
+-      assert_cert @mycert, decoded.certificate 
++      assert_cert @mycert, decoded.certificate
+       assert_equal TEST_KEY_RSA1024.to_der, decoded.key.to_der
+     end
+ 
+diff --git a/test/openssl/test_pkcs7.rb b/test/openssl/test_pkcs7.rb
+index b17cbda..4a6692a 100644
+--- a/test/openssl/test_pkcs7.rb
++++ b/test/openssl/test_pkcs7.rb
+@@ -146,7 +146,7 @@ class OpenSSL::TestPKCS7 < Test::Unit::TestCase
+     assert_equal(3, recip[1].serial)
+     assert_equal(data, p7.decrypt(@rsa1024, @ee2_cert))
+   end
+-  
++
+   def test_graceful_parsing_failure #[ruby-core:43250]
+     contents = File.read(__FILE__)
+     assert_raise(ArgumentError) { OpenSSL::PKCS7.new(contents) }
+diff --git a/test/openssl/test_pkey_dh.rb b/test/openssl/test_pkey_dh.rb
+index bcba400..160a131 100644
+--- a/test/openssl/test_pkey_dh.rb
++++ b/test/openssl/test_pkey_dh.rb
+@@ -3,13 +3,23 @@ require_relative 'utils'
+ if defined?(OpenSSL)
+ 
+ class OpenSSL::TestPKeyDH < Test::Unit::TestCase
++
++  NEW_KEYLEN = 256
++
+   def test_new
+-    dh = OpenSSL::PKey::DH.new(256)
++    dh = OpenSSL::PKey::DH.new(NEW_KEYLEN)
+     assert_key(dh)
+   end
+ 
++  def test_new_break
++    assert_nil(OpenSSL::PKey::DH.new(NEW_KEYLEN) { break })
++    assert_raises(RuntimeError) do
++      OpenSSL::PKey::DH.new(NEW_KEYLEN) { raise }
++    end
++  end
++
+   def test_to_der
+-    dh = OpenSSL::PKey::DH.new(256)
++    dh = OpenSSL::TestUtils::TEST_KEY_DH1024
+     der = dh.to_der
+     dh2 = OpenSSL::PKey::DH.new(der)
+     assert_equal_params(dh, dh2)
+@@ -17,7 +27,7 @@ class OpenSSL::TestPKeyDH < Test::Unit::TestCase
+   end
+ 
+   def test_to_pem
+-    dh = OpenSSL::PKey::DH.new(256)
++    dh = OpenSSL::TestUtils::TEST_KEY_DH1024
+     pem = dh.to_pem
+     dh2 = OpenSSL::PKey::DH.new(pem)
+     assert_equal_params(dh, dh2)
+@@ -25,7 +35,7 @@ class OpenSSL::TestPKeyDH < Test::Unit::TestCase
+   end
+ 
+   def test_public_key
+-    dh = OpenSSL::PKey::DH.new(256)
++    dh = OpenSSL::TestUtils::TEST_KEY_DH1024
+     public_key = dh.public_key
+     assert_no_key(public_key) #implies public_key.public? is false!
+     assert_equal(dh.to_der, public_key.to_der)
+@@ -33,14 +43,14 @@ class OpenSSL::TestPKeyDH < Test::Unit::TestCase
+   end
+ 
+   def test_generate_key
+-    dh = OpenSSL::TestUtils::TEST_KEY_DH512.public_key # creates a copy
++    dh = OpenSSL::TestUtils::TEST_KEY_DH512_PUB.public_key # creates a copy
+     assert_no_key(dh)
+     dh.generate_key!
+     assert_key(dh)
+   end
+ 
+   def test_key_exchange
+-    dh = OpenSSL::TestUtils::TEST_KEY_DH512
++    dh = OpenSSL::TestUtils::TEST_KEY_DH512_PUB
+     dh2 = dh.public_key
+     dh.generate_key!
+     dh2.generate_key!
+diff --git a/test/openssl/test_ssl_session.rb b/test/openssl/test_ssl_session.rb
+index 12c6152..f291c5d 100644
+--- a/test/openssl/test_ssl_session.rb
++++ b/test/openssl/test_ssl_session.rb
+@@ -3,6 +3,43 @@ require_relative "utils"
+ if defined?(OpenSSL)
+ 
+ class OpenSSL::TestSSLSession < OpenSSL::SSLTestCase
++  def test_session_equals
++    session = OpenSSL::SSL::Session.new <<-SESSION
++-----BEGIN SSL SESSION PARAMETERS-----
++MIIDFgIBAQICAwEEAgA5BCCY3pW6iTkPoD5SENuztz/gZjhvey6XnHbsxd22k0Ol
++dgQw8uaN3hCRnlhoIKPWInCFzrp/tQsDRFs9jDjc9pwpy/oKHmJdQQMQA1g8FYnO
++gpdVoQYCBE52ikKiBAICASyjggKOMIICijCCAXKgAwIBAgIBAjANBgkqhkiG9w0B
++AQUFADA9MRMwEQYKCZImiZPyLGQBGRYDb3JnMRkwFwYKCZImiZPyLGQBGRYJcnVi
++eS1sYW5nMQswCQYDVQQDDAJDQTAeFw0xMTA5MTkwMDE4MTBaFw0xMTA5MTkwMDQ4
++MTBaMEQxEzARBgoJkiaJk/IsZAEZFgNvcmcxGTAXBgoJkiaJk/IsZAEZFglydWJ5
++LWxhbmcxEjAQBgNVBAMMCWxvY2FsaG9zdDCBnzANBgkqhkiG9w0BAQEFAAOBjQAw
++gYkCgYEAy8LEsNRApz7U/j5DoB4XBgO9Z8Atv5y/OVQRp0ag8Tqo1YewsWijxEWB
++7JOATwpBN267U4T1nPZIxxEEO7n/WNa2ws9JWsjah8ssEBFSxZqdXKSLf0N4Hi7/
++GQ/aYoaMCiQ8jA4jegK2FJmXM71uPe+jFN/peeBOpRfyXxRFOYcCAwEAAaMSMBAw
++DgYDVR0PAQH/BAQDAgWgMA0GCSqGSIb3DQEBBQUAA4IBAQARC7GP7InX1t7VEXz2
++I8RI57S0/HSJL4fDIYP3zFpitHX1PZeo+7XuzMilvPjjBo/ky9Jzo8TYiY+N+JEz
++mY/A/zPA4ZsJ7KYj6/FEdIc/vRlS0CvsbClbNjw1jl/PoB2FLr2b3uuBcZEsyZeP
++yq154ijq37Ajf8K5Mi5FgshoP41BPtRPj+VVf61rv1IcEnNWdDCS6DR4XsaNC+zt
++G6AqCqkytIXWRuDw6n6vYLF3A/tn2sldLo7/scY0PMDNbo63O/LTxkDHmPhSkD68
++8m9SsMeTR+RCiDEZWFPVcAH/8mDfi+5k8uN3qS+gOU/PPrmHGgl5ykiSFgqs4v61
++tddwpBAEDjcwMzA5NTYzMTU1MzAwpQMCARM=
++-----END SSL SESSION PARAMETERS-----
++    SESSION
++
++    start_server(PORT, OpenSSL::SSL::VERIFY_NONE, true) { |_, port|
++      ctx = OpenSSL::SSL::SSLContext.new
++      ctx.session_cache_mode = OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT
++      ctx.session_id_context = self.object_id.to_s
++
++      sock = TCPSocket.new '127.0.0.1', port
++      ssl = OpenSSL::SSL::SSLSocket.new sock, ctx
++      ssl.session = session
++
++      assert_equal session, ssl.session
++      sock.close
++    }
++  end
++
+   def test_session
+     start_server(PORT, OpenSSL::SSL::VERIFY_NONE, true) do |server, port|
+       sock = TCPSocket.new("127.0.0.1", port)
+@@ -98,7 +135,7 @@ __EOS__
+   def test_session_timeout
+     sess = OpenSSL::SSL::Session.new(DUMMY_SESSION_NO_EXT)
+     assert_raise(TypeError) do
+-      sess.timeout = (now = Time.now)
++      sess.timeout = Time.now
+     end
+     sess.timeout = 1
+     assert_equal(1, sess.timeout.to_i)
+@@ -236,7 +273,7 @@ __EOS__
+ 
+   def test_ctx_client_session_cb
+     called = {}
+-    ctx = OpenSSL::SSL::SSLContext.new("SSLv3")
++    ctx = OpenSSL::SSL::SSLContext.new
+     ctx.session_cache_mode = OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT
+ 
+     ctx.session_new_cb = lambda { |ary|
+@@ -270,6 +307,7 @@ __EOS__
+ 
+     ctx_proc = Proc.new { |ctx, ssl|
+       ctx.session_cache_mode = OpenSSL::SSL::SSLContext::SESSION_CACHE_SERVER
++      ctx.options = OpenSSL::SSL::OP_NO_TICKET
+       last_server_session = nil
+ 
+       # get_cb is called whenever a client proposed to resume a session but
+@@ -300,23 +338,26 @@ __EOS__
+     }
+ 
+     server_proc = Proc.new { |c, ssl|
+-      session = ssl.session
+-      stats = c.session_cache_stats
++      ssl.session
++      c.session_cache_stats
+       readwrite_loop(c, ssl)
+     }
+     start_server(PORT, OpenSSL::SSL::VERIFY_NONE, true, :ctx_proc => ctx_proc, :server_proc => server_proc) do |server, port|
+       last_client_session = nil
+       3.times do
+         sock = TCPSocket.new("127.0.0.1", port)
+-        ssl = OpenSSL::SSL::SSLSocket.new(sock, OpenSSL::SSL::SSLContext.new("SSLv3"))
++        ssl = OpenSSL::SSL::SSLSocket.new(sock, OpenSSL::SSL::SSLContext.new())
+         ssl.sync_close = true
+         ssl.session = last_client_session if last_client_session
+         ssl.connect
+         last_client_session = ssl.session
+         ssl.close
+-        Thread.pass # try to ensure server calls callbacks
+-        assert(called.delete(:new))
+-        assert(called.delete(:remove))
++        timeout(5) do
++          Thread.pass until called.key?(:new)
++          assert(called.delete(:new))
++          Thread.pass until called.key?(:remove)
++          assert(called.delete(:remove))
++        end
+       end
+     end
+     assert(called[:get1])
+diff --git a/test/openssl/test_x509cert.rb b/test/openssl/test_x509cert.rb
+index 80c31f4..dd5751e 100644
+--- a/test/openssl/test_x509cert.rb
++++ b/test/openssl/test_x509cert.rb
+@@ -38,9 +38,10 @@ class OpenSSL::TestX509Certificate < Test::Unit::TestCase
+     ]
+ 
+     sha1 = OpenSSL::Digest::SHA1.new
+-    dss1 = OpenSSL::Digest::DSS1.new
++    dsa_digest = OpenSSL::TestUtils::DSA_SIGNATURE_DIGEST.new
++
+     [
+-      [@rsa1024, sha1], [@rsa2048, sha1], [@dsa256, dss1], [@dsa512, dss1],
++      [@rsa1024, sha1], [@rsa2048, sha1], [@dsa256, dsa_digest], [@dsa512, dsa_digest]
+     ].each{|pk, digest|
+       cert = issue_cert(@ca, pk, 1, Time.now, Time.now+3600, exts,
+                         nil, nil, digest)
+@@ -145,7 +146,7 @@ class OpenSSL::TestX509Certificate < Test::Unit::TestCase
+     assert_equal(false, cert.verify(@rsa2048))
+ 
+     cert = issue_cert(@ca, @dsa512, 1, Time.now, Time.now+3600, [],
+-                      nil, nil, OpenSSL::Digest::DSS1.new)
++                      nil, nil, OpenSSL::TestUtils::DSA_SIGNATURE_DIGEST.new)
+     assert_equal(false, certificate_error_returns_false { cert.verify(@rsa1024) })
+     assert_equal(false, certificate_error_returns_false { cert.verify(@rsa2048) })
+     assert_equal(false, cert.verify(@dsa256))
+@@ -166,20 +167,20 @@ class OpenSSL::TestX509Certificate < Test::Unit::TestCase
+     end
+ 
+     assert_raise(OpenSSL::X509::CertificateError){
+-      cert = issue_cert(@ca, @dsa512, 1, Time.now, Time.now+3600, [],
+-                        nil, nil, OpenSSL::Digest::MD5.new)
++      issue_cert(@ca, @dsa512, 1, Time.now, Time.now+3600, [],
++                 nil, nil, OpenSSL::Digest::MD5.new)
+     }
+   end
+ 
+   def test_dsig_algorithm_mismatch
+     assert_raise(OpenSSL::X509::CertificateError) do
+-      cert = issue_cert(@ca, @rsa2048, 1, Time.now, Time.now+3600, [],
+-                        nil, nil, OpenSSL::Digest::DSS1.new)
++      issue_cert(@ca, @rsa2048, 1, Time.now, Time.now+3600, [],
++                 nil, nil, OpenSSL::Digest::DSS1.new)
+     end if OpenSSL::OPENSSL_VERSION_NUMBER < 0x10001000 # [ruby-core:42949]
+ 
+     assert_raise(OpenSSL::X509::CertificateError) do
+-      cert = issue_cert(@ca, @dsa512, 1, Time.now, Time.now+3600, [],
+-                        nil, nil, OpenSSL::Digest::MD5.new)
++      issue_cert(@ca, @dsa512, 1, Time.now, Time.now+3600, [],
++                 nil, nil, OpenSSL::Digest::MD5.new)
+     end
+   end
+ 
+diff --git a/test/openssl/test_x509crl.rb b/test/openssl/test_x509crl.rb
+index 56508e0..d502475 100644
+--- a/test/openssl/test_x509crl.rb
++++ b/test/openssl/test_x509crl.rb
+@@ -101,7 +101,6 @@ class OpenSSL::TestX509CRL < Test::Unit::TestCase
+     assert_equal(false, revoked[3].extensions[0].critical?)
+     assert_equal(false, revoked[4].extensions[0].critical?)
+ 
+-    crl = OpenSSL::X509::CRL.new(crl.to_der)
+     assert_equal("Key Compromise", revoked[0].extensions[0].value)
+     assert_equal("CA Compromise", revoked[1].extensions[0].value)
+     assert_equal("Affiliation Changed", revoked[2].extensions[0].value)
+@@ -198,9 +197,9 @@ class OpenSSL::TestX509CRL < Test::Unit::TestCase
+     assert_equal(false, crl.verify(@rsa2048))
+ 
+     cert = issue_cert(@ca, @dsa512, 1, Time.now, Time.now+3600, [],
+-                      nil, nil, OpenSSL::Digest::DSS1.new)
++                      nil, nil, OpenSSL::TestUtils::DSA_SIGNATURE_DIGEST.new)
+     crl = issue_crl([], 1, Time.now, Time.now+1600, [],
+-                    cert, @dsa512, OpenSSL::Digest::DSS1.new)
++                    cert, @dsa512, OpenSSL::TestUtils::DSA_SIGNATURE_DIGEST.new)
+     assert_equal(false, crl_error_returns_false { crl.verify(@rsa1024) })
+     assert_equal(false, crl_error_returns_false { crl.verify(@rsa2048) })
+     assert_equal(false, crl.verify(@dsa256))
+diff --git a/test/openssl/test_x509name.rb b/test/openssl/test_x509name.rb
+index 90c0992..de35fc3 100644
+--- a/test/openssl/test_x509name.rb
++++ b/test/openssl/test_x509name.rb
+@@ -1,3 +1,4 @@
++# coding: US-ASCII
+ require_relative 'utils'
+ 
+ if defined?(OpenSSL)
+@@ -339,7 +340,7 @@ class OpenSSL::TestX509Name < Test::Unit::TestCase
+     n1 = OpenSSL::X509::Name.parse 'CN=a'
+     n2 = OpenSSL::X509::Name.parse 'CN=b'
+ 
+-    assert_equal -1, n1 <=> n2
++    assert_equal(-1, n1 <=> n2)
+   end
+ 
+   def name_hash(name)
+diff --git a/test/openssl/test_x509req.rb b/test/openssl/test_x509req.rb
+index 882a1d7..e6c89c5 100644
+--- a/test/openssl/test_x509req.rb
++++ b/test/openssl/test_x509req.rb
+@@ -26,7 +26,7 @@ class OpenSSL::TestX509Request < Test::Unit::TestCase
+     req = OpenSSL::X509::Request.new(req.to_der)
+     assert_equal(@rsa1024.public_key.to_der, req.public_key.to_der)
+ 
+-    req = issue_csr(0, @dn, @dsa512, OpenSSL::Digest::DSS1.new)
++    req = issue_csr(0, @dn, @dsa512, OpenSSL::TestUtils::DSA_SIGNATURE_DIGEST.new)
+     assert_equal(@dsa512.public_key.to_der, req.public_key.to_der)
+     req = OpenSSL::X509::Request.new(req.to_der)
+     assert_equal(@dsa512.public_key.to_der, req.public_key.to_der)
+@@ -115,7 +115,7 @@ class OpenSSL::TestX509Request < Test::Unit::TestCase
+     req.subject = OpenSSL::X509::Name.parse("/C=JP/CN=FooBar")
+     assert_equal(false, req.verify(@rsa2048))
+ 
+-    req = issue_csr(0, @dn, @dsa512, OpenSSL::Digest::DSS1.new)
++    req = issue_csr(0, @dn, @dsa512, OpenSSL::TestUtils::DSA_SIGNATURE_DIGEST.new)
+     assert_equal(false, request_error_returns_false { req.verify(@rsa1024) })
+     assert_equal(false, request_error_returns_false { req.verify(@rsa2048) })
+     assert_equal(false, req.verify(@dsa256))
+diff --git a/test/openssl/utils.rb b/test/openssl/utils.rb
+index c4c0a0c..153e17f 100644
+--- a/test/openssl/utils.rb
++++ b/test/openssl/utils.rb
+@@ -1,5 +1,6 @@
+ begin
+   require "openssl"
++
+ rescue LoadError
+ end
+ require "test/unit"
+@@ -92,13 +93,27 @@ CeBUl+MahZtn9fO1JKdF4qJmS39dXnpENg==
+ 
+ end
+ 
+-  TEST_KEY_DH512 = OpenSSL::PKey::DH.new <<-_end_of_pem_
++  TEST_KEY_DH512_PUB = OpenSSL::PKey::DH.new <<-_end_of_pem_
+ -----BEGIN DH PARAMETERS-----
+ MEYCQQDmWXGPqk76sKw/edIOdhAQD4XzjJ+AR/PTk2qzaGs+u4oND2yU5D2NN4wr
+ aPgwHyJBiK1/ebK3tYcrSKrOoRyrAgEC
+ -----END DH PARAMETERS-----
+   _end_of_pem_
+ 
++  TEST_KEY_DH1024 = OpenSSL::PKey::DH.new <<-_end_of_pem_
++-----BEGIN DH PARAMETERS-----
++MIGHAoGBAKnKQ8MNK6nYZzLrrcuTsLxuiJGXoOO5gT+tljOTbHBuiktdMTITzIY0
++pFxIvjG05D7HoBZQfrR0c92NGWPkAiCkhQKB8JCbPVzwNLDy6DZ0pmofDKrEsYHG
++AQjjxMXhwULlmuR/K+WwlaZPiLIBYalLAZQ7ZbOPeVkJ8ePao0eLAgEC
++-----END DH PARAMETERS-----
++  _end_of_pem_
++
++  TEST_KEY_DH1024.priv_key = OpenSSL::BN.new("48561834C67E65FFD2A9B47F41E5E78FDC95C387428FDB1E4B0188B64D1643C3A8D3455B945B7E8C4D166010C7C2CE23BFB9BEF43D0348FE7FA5284B0225E7FE1537546D114E3D8A4411B9B9351AB451E1A358F50ED61B1F00DA29336EEBBD649980AC86D76AF8BBB065298C2052672EEF3EF13AB47A15275FC2836F3AC74CEA", 16)
++
++  DSA_SIGNATURE_DIGEST = OpenSSL::OPENSSL_VERSION_NUMBER > 0x10000000 ?
++                         OpenSSL::Digest::SHA1 :
++                         OpenSSL::Digest::DSS1
++
+   module_function
+ 
+   def issue_cert(dn, key, serial, not_before, not_after, extensions,
+@@ -235,10 +250,9 @@ aPgwHyJBiK1/ebK3tYcrSKrOoRyrAgEC
+           server_proc.call(ctx, ssl)
+         end
+       end
+-    rescue Errno::EBADF, IOError, Errno::EINVAL, Errno::ECONNABORTED, Errno::ENOTSOCK
++    rescue Errno::EBADF, IOError, Errno::EINVAL, Errno::ECONNABORTED, Errno::ENOTSOCK, Errno::ECONNRESET
+     end
+ 
+-    DHParam = OpenSSL::PKey::DH.new(128)
+     def start_server(port0, verify_mode, start_immediately, args = {}, &block)
+       ctx_proc = args[:ctx_proc]
+       server_proc = args[:server_proc]
+@@ -252,7 +266,7 @@ aPgwHyJBiK1/ebK3tYcrSKrOoRyrAgEC
+       #ctx.extra_chain_cert = [ ca_cert ]
+       ctx.cert = @svr_cert
+       ctx.key = @svr_key
+-      ctx.tmp_dh_callback = proc { DHParam }
++      ctx.tmp_dh_callback = proc { OpenSSL::TestUtils::TEST_KEY_DH1024 }
+       ctx.verify_mode = verify_mode
+       ctx_proc.call(ctx) if ctx_proc
+ 
