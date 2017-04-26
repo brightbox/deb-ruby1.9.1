@@ -1,0 +1,17 @@
+--- a/test/openssl/test_cipher.rb
++++ b/test/openssl/test_cipher.rb
+@@ -71,7 +71,13 @@ class OpenSSL::TestCipher < Test::Unit::
+   if OpenSSL::OPENSSL_VERSION_NUMBER > 0x00907000
+     def test_ciphers
+       OpenSSL::Cipher.ciphers.each{|name|
+-        assert(OpenSSL::Cipher::Cipher.new(name).is_a?(OpenSSL::Cipher::Cipher))
++        next if /netbsd/ =~ RUBY_PLATFORM && /idea|rc5/i =~ name
++        begin
++          assert_kind_of(OpenSSL::Cipher::Cipher, OpenSSL::Cipher::Cipher.new(name))
++        rescue OpenSSL::Cipher::CipherError => e
++          next if /wrap/ =~ name and e.message == 'wrap mode not allowed'
++          raise
++        end
+       }
+     end
+ 

@@ -23,3 +23,4 @@ hurd-path-max.diff
 20140404-rubygems-1.8.29.patch
 ruby_1_9_3-p551-fixes-2015-04-14.patch
 20160626-openssl-test-updates.patch
+ruby-2.0.0-OpenSSL-cipher-test-does-not-allow-wrap-mode.patch
