@@ -35,6 +35,10 @@ Without the wrapping, the text might not look good in the RSS feed.
     assert_equal expected, format_text(text, 78)
   end
 
+  def test_format_removes_nonprintable_characters
+    assert_equal "text with weird .. stuff .", format_text("text with weird \x1b\x02 stuff \x7f", 40)
+  end
+
   def test_levenshtein_distance_add
     assert_equal 2, levenshtein_distance("zentest", "zntst")
     assert_equal 2, levenshtein_distance("zntst", "zentest")

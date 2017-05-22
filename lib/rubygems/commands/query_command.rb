@@ -253,7 +253,7 @@ class Gem::Commands::QueryCommand < Gem::Command
 
         entry << "\n\n" << format_text(spec.summary, 68, 4)
       end
-      output << entry
+      output << clean_text(entry)
     end
 
     say output.join(options[:details] ? "\n\n" : "\n")

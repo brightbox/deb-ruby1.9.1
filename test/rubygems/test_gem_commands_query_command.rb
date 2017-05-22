@@ -141,12 +141,12 @@ pl (1)
     assert_equal '', @ui.error
   end
 
-  def test_execute_details_platform
+  def test_execute_details_cleans_text
     @a1.platform = 'x86-linux'
 
     @a2.summary = 'This is a lot of text. ' * 4
-    @a2.authors = ['Abraham Lincoln', 'Hirohito']
-    @a2.homepage = 'http://a.example.com/'
+    @a2.authors = ["Abraham Lincoln \x01", "\x02 Hirohito"]
+    @a2.homepage = "http://a.example.com/\x03"
     @a2.rubyforge_project = 'rubygems'
     @a2.platform = 'universal-darwin'
 
@@ -167,9 +167,9 @@ a (2, 1)
     Platforms:
         1: x86-linux
         2: universal-darwin
-    Authors: Abraham Lincoln, Hirohito
+    Authors: Abraham Lincoln ., . Hirohito
     Rubyforge: http://rubyforge.org/projects/rubygems
-    Homepage: http://a.example.com/
+    Homepage: http://a.example.com/.
 
     This is a lot of text. This is a lot of text. This is a lot of text.
     This is a lot of text.
