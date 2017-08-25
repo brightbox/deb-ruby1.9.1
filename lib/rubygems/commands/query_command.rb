@@ -251,7 +251,8 @@ class Gem::Commands::QueryCommand < Gem::Command
           end
         end
 
-        entry << "\n\n" << format_text(spec.summary, 68, 4)
+        summary = truncate_text(spec.summary, "the summary for #{spec.full_name}")
+        entry << "\n\n" << format_text(summary, 68, 4)
       end
       output << clean_text(entry)
     end
