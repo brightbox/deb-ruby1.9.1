@@ -186,6 +186,43 @@ pl (1)
     assert_equal '', @ui.error
   end
 
+  def test_execute_details_truncates_summary
+    @a2.summary = 'This is a lot of text. ' * 10_000
+    @a2.authors = ["Abraham Lincoln \x01", "\x02 Hirohito"]
+    @a2.homepage = "http://a.example.com/\x03"
+
+    util_clear_gems
+    util_setup_spec_fetcher @a2, @pl1
+
+    @cmd.handle_options %w[-r -d]
+
+    use_ui @ui do
+      @cmd.execute
+    end
+
+    expected = <<-EOF
+
+*** REMOTE GEMS ***
+
+a (2)
+    Authors: Abraham Lincoln ., . Hirohito
+    Homepage: http://a.example.com/.
+
+    Truncating the summary for a-2 to 100,000 characters:
+#{"    This is a lot of text. This is a lot of text. This is a lot of text.\n" * 1449}    This is a lot of te
+
+pl (1)
+    Platform: i386-linux
+    Author: A User
+    Homepage: http://example.com
+
+    this is a summary
+    EOF
+
+    assert_equal expected, @ui.output
+    assert_equal '', @ui.error
+  end
+
   def test_execute_installed
     @cmd.handle_options %w[-n a --installed]
 
