@@ -1041,6 +1041,27 @@ load Gem.bin_path('a', 'executable', version)
     refute @installer.installation_satisfies_dependency?(dep)
   end
 
+  def test_pre_install_checks_malicious_name
+    spec = util_spec 'malicious', '1'
+    spec.name = '../malicious'
+    def spec.full_name # so the spec is buildable
+      "malicious-1"
+    end
+    def spec.validate; end
+
+    util_build_gem spec
+
+    gem = File.join(@gemhome, 'cache', spec.file_name)
+
+    use_ui @ui do
+      @installer = Gem::Installer.new gem
+      e = assert_raises Gem::InstallError do
+        @installer.install
+      end
+      assert_equal '#<Gem::Specification name=../malicious version=1> has an invalid name', e.message
+    end
+  end
+
   def test_shebang
     util_setup_install
 
@@ -1218,7 +1239,7 @@ load Gem.bin_path('a', 'executable', version)
   def test_dir
     util_setup_install
 
-    assert_match @installer.dir, %r!/installer/gems/a-2$!
+    assert_match %r!/installer/gems/a-2$!, @installer.dir
   end
 
   def old_ruby_required
