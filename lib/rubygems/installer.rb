@@ -152,6 +152,8 @@ class Gem::Installer
     @security_policy = nil if @force and @security_policy and
                               not @security_policy.only_signed
 
+    verify_spec_name
+
     unless @force
       ensure_required_ruby_version_met
       ensure_required_rubygems_version_met
@@ -453,6 +455,11 @@ class Gem::Installer
     FileUtils.mkdir_p gem_home
     raise Gem::FilePermissionError, gem_home unless
       unpack or File.writable?(gem_home)
+  end
+
+  def verify_spec_name
+    return if spec.name =~ Gem::Specification::VALID_NAME_PATTERN
+    raise Gem::InstallError, "#{spec} has an invalid name"
   end
 
   ##
