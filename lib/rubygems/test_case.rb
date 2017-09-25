@@ -1,5 +1,7 @@
 at_exit { $SAFE = 1 }
 
+gem 'minitest', '~> 4.0'
+
 if defined? Gem::QuickLoader
   Gem::QuickLoader.load_full_rubygems_library
 else
@@ -21,6 +23,7 @@ require 'rubygems/test_utilities'
 require 'pp'
 require 'zlib'
 require 'pathname'
+require 'shellwords'
 Gem.load_yaml
 
 require 'rubygems/mock_gem_ui'
@@ -90,6 +93,63 @@ class Gem::TestCase < MiniTest::Unit::TestCase
   def refute_path_exists path, msg = nil
     msg = message(msg) { "Expected path '#{path}' to not exist" }
     refute File.exist?(path), msg
+  end
+
+  def scan_make_command_lines(output)
+    output.scan(/^#{Regexp.escape make_command}(?:[[:blank:]].*)?$/)
+  end
+
+  def parse_make_command_line(line)
+    command, *args = line.shellsplit
+
+    targets = []
+    macros = {}
+
+    args.each do |arg|
+      case arg
+      when /\A(\w+)=/
+        macros[$1] = $'
+      else
+        targets << arg
+      end
+    end
+
+    targets << '' if targets.empty?
+
+    {
+      :command => command,
+      :targets => targets,
+      :macros => macros,
+    }
+  end
+
+  def assert_contains_make_command(target, output, msg = nil)
+    if output.match(/\n/)
+      msg = message(msg) {
+        'Expected output containing make command "%s": %s' % [
+          ('%s %s' % [make_command, target]).rstrip,
+          output.inspect
+        ]
+      }
+    else
+      msg = message(msg) {
+        'Expected make command "%s": %s' % [
+          ('%s %s' % [make_command, target]).rstrip,
+          output.inspect
+        ]
+      }
+    end
+
+    assert scan_make_command_lines(output).any? { |line|
+      make = parse_make_command_line(line)
+
+      if make[:targets].include?(target)
+        yield make, line if block_given?
+        true
+      else
+        false
+      end
+    }, msg
   end
 
   include Gem::DefaultUserInteraction
@@ -415,6 +475,11 @@ class Gem::TestCase < MiniTest::Unit::TestCase
       cache = spec.cache_file
       FileUtils.mv File.basename(cache), cache
     end
+  end
+
+  def util_remove_gem(spec)
+    FileUtils.rm_rf spec.cache_file
+    FileUtils.rm_rf spec.spec_file
   end
 
   ##

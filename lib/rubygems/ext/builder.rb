@@ -4,7 +4,17 @@
 # See LICENSE.txt for permissions.
 #++
 
+require 'thread'
+
 class Gem::Ext::Builder
+
+  ##
+  # The builder shells-out to run various commands after changing the
+  # directory.  This means multiple installations cannot be allowed to build
+  # extensions in parallel as they may change each other's directories leading
+  # to broken extensions or failed installations.
+
+  CHDIR_MUTEX = Mutex.new # :nodoc:
 
   def self.class_name
     name =~ /Ext::(.*)Builder/
@@ -16,12 +26,6 @@ class Gem::Ext::Builder
       raise Gem::InstallError, "Makefile not found:\n\n#{results.join "\n"}"
     end
 
-    mf = File.read('Makefile')
-    mf = mf.gsub(/^RUBYARCHDIR\s*=\s*\$[^$]*/, "RUBYARCHDIR = #{dest_path}")
-    mf = mf.gsub(/^RUBYLIBDIR\s*=\s*\$[^$]*/, "RUBYLIBDIR = #{dest_path}")
-
-    File.open('Makefile', 'wb') {|f| f.print mf}
-
     # try to find make program from Ruby configure arguments first
     RbConfig::CONFIG['configure_args'] =~ /with-make-prog\=(\w+)/
     make_program = $1 || ENV['make']
@@ -29,13 +33,16 @@ class Gem::Ext::Builder
       make_program = (/mswin/ =~ RUBY_PLATFORM) ? 'nmake' : 'make'
     end
 
-    ['', ' install'].each do |target|
-      cmd = "#{make_program}#{target}"
-      results << cmd
-      results << `#{cmd} #{redirector}`
+    destdir = '"DESTDIR=%s"' % ENV['DESTDIR'] if RUBY_VERSION > '2.0'
 
-      raise Gem::InstallError, "make#{target} failed:\n\n#{results}" unless
-        $?.success?
+    ['', 'install'].each do |target|
+      # Pass DESTDIR via command line to override what's in MAKEFLAGS
+      cmd = [
+        make_program,
+        destdir,
+        target
+      ].join(' ').rstrip
+      run(cmd, results, "make #{target}".rstrip)
     end
   end
 
@@ -43,12 +50,12 @@ class Gem::Ext::Builder
     '2>&1'
   end
 
-  def self.run(command, results)
+  def self.run(command, results, command_name = nil)
     results << command
     results << `#{command} #{redirector}`
 
     unless $?.success? then
-      raise Gem::InstallError, "#{class_name} failed:\n\n#{results.join "\n"}"
+      raise Gem::InstallError, "#{command_name || class_name} failed:\n\n#{results.join "\n"}"
     end
   end
 

@@ -117,6 +117,8 @@ class TestGemIndexer < Gem::TestCase
     assert_indexed @tempdir, "latest_specs.#{@marshal_version}"
     assert_indexed @tempdir, "latest_specs.#{@marshal_version}.gz"
 
+    single_quote = CGI.escapeHTML "'"
+
     expected = <<-EOF
 <?xml version=\"1.0\"?>
 <rss version=\"2.0\">
@@ -227,13 +229,13 @@ class TestGemIndexer < Gem::TestCase
       <description>
 &lt;pre&gt;This line is really, really long.  So long, in fact, that it is more than
 eighty characters long!  The purpose of this line is for testing wrapping
-behavior because sometimes people don't wrap their text to eighty characters.
+behavior because sometimes people don#{single_quote}t wrap their text to eighty characters.
 Without the wrapping, the text might not look good in the RSS feed.
 
 Also, a list:
-  * An entry that's actually kind of sort
-  * an entry that's really long, which will probably get wrapped funny.
-That's ok, somebody wasn't thinking straight when they made it more than
+  * An entry that#{single_quote}s actually kind of sort
+  * an entry that#{single_quote}s really long, which will probably get wrapped funny.
+That#{single_quote}s ok, somebody wasn#{single_quote}t thinking straight when they made it more than
 eighty characters.&lt;/pre&gt;
       </description>
       <author>example@example.com (Example), example2@example.com (Example2)</author>
@@ -494,6 +496,20 @@ eighty characters.&lt;/pre&gt;
                  prerelease_specs
   end
 
+  ##
+  # Emulate the starting state of Gem::Specification in a live environment,
+  # where it will carry the list of system gems
+  def with_system_gems
+    Gem::Specification.reset
+
+    sys_gem = quick_spec 'systemgem', '1.0'
+    util_build_gem sys_gem
+    Gem::Specification.add_spec sys_gem
+    yield
+    util_remove_gem sys_gem
+  end
+
+
   def test_update_index
     use_ui @ui do
       @indexer.generate_index
@@ -518,30 +534,32 @@ eighty characters.&lt;/pre&gt;
     FileUtils.mv @d2_1.cache_file, gems
     FileUtils.mv @d2_1_a.cache_file, gems
 
-    use_ui @ui do
-      @indexer.update_index
+    with_system_gems do
+      use_ui @ui do
+        @indexer.update_index
+      end
+
+      assert_indexed marshal_quickdir, "#{File.basename(@d2_1.spec_file)}.rz"
+
+      specs_index = Marshal.load Gem.read_binary(@indexer.dest_specs_index)
+
+      assert_includes specs_index, @d2_1_tuple
+      refute_includes specs_index, @d2_1_a_tuple
+
+      latest_specs_index = Marshal.load \
+        Gem.read_binary(@indexer.dest_latest_specs_index)
+
+      assert_includes latest_specs_index, @d2_1_tuple
+      assert_includes latest_specs_index,
+                      [@d2_0.name, @d2_0.version, @d2_0.original_platform]
+      refute_includes latest_specs_index, @d2_1_a_tuple
+
+      pre_specs_index = Marshal.load \
+        Gem.read_binary(@indexer.dest_prerelease_specs_index)
+
+      assert_includes pre_specs_index, @d2_1_a_tuple
+      refute_includes pre_specs_index, @d2_1_tuple
     end
-
-    assert_indexed marshal_quickdir, "#{File.basename(@d2_1.spec_file)}.rz"
-
-    specs_index = Marshal.load Gem.read_binary(@indexer.dest_specs_index)
-
-    assert_includes specs_index, @d2_1_tuple
-    refute_includes specs_index, @d2_1_a_tuple
-
-    latest_specs_index = Marshal.load \
-      Gem.read_binary(@indexer.dest_latest_specs_index)
-
-    assert_includes latest_specs_index, @d2_1_tuple
-    assert_includes latest_specs_index,
-                    [@d2_0.name, @d2_0.version, @d2_0.original_platform]
-    refute_includes latest_specs_index, @d2_1_a_tuple
-
-    pre_specs_index = Marshal.load \
-      Gem.read_binary(@indexer.dest_prerelease_specs_index)
-
-    assert_includes pre_specs_index, @d2_1_a_tuple
-    refute_includes pre_specs_index, @d2_1_tuple
   end
 
   def assert_indexed(dir, name)

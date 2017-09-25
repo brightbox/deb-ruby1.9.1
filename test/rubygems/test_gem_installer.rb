@@ -229,7 +229,8 @@ load Gem.bin_path('a', 'executable', version)
   def test_generate_bin_bindir_with_user_install_warning
     util_setup_install
 
-    bin_dir = Gem.win_platform? ? File.expand_path(ENV["WINDIR"]) : "/usr/bin"
+    bin_dir = Gem.win_platform? ? File.expand_path(ENV["WINDIR"]).upcase :
+                                  "/usr/bin"
 
     options = {
       :bin_dir => bin_dir,
@@ -747,8 +748,7 @@ load Gem.bin_path('a', 'executable', version)
 
     exe = File.join @gemhome, 'bin', 'executable'
 
-    extra_arg = "\xE4pfel".force_encoding("UTF-8")
-    ARGV.unshift extra_arg
+    ARGV.unshift "\xE4pfel".force_encoding("UTF-8")
 
     begin
       Gem::Specification.reset
@@ -757,7 +757,7 @@ load Gem.bin_path('a', 'executable', version)
         instance_eval File.read(exe)
       end
     ensure
-      ARGV.shift if ARGV.first == extra_arg
+      ARGV.shift if ARGV.first == "\xE4pfel"
     end
 
     assert_match(/ran executable/, e.message)
@@ -1031,6 +1031,46 @@ load Gem.bin_path('a', 'executable', version)
     end
   end
 
+  def test_install_extension_flat
+    skip '1.8 mkmf.rb does not create TOUCH' if RUBY_VERSION < '1.9'
+    @spec.require_paths = ["."]
+
+    @spec.extensions << "extconf.rb"
+
+    write_file File.join(@tempdir, "extconf.rb") do |io|
+      io.write <<-RUBY
+        require "mkmf"
+
+        CONFIG['CC'] = '$(TOUCH) $@ ||'
+        CONFIG['LDSHARED'] = '$(TOUCH) $@ ||'
+
+        create_makefile("#{@spec.name}")
+      RUBY
+    end
+
+    # empty depend file for no auto dependencies
+    @spec.files += %W"depend #{@spec.name}.c".each {|file|
+      write_file File.join(@tempdir, file)
+    }
+
+    so = File.join(@gemhome, 'gems', @spec.full_name, "#{@spec.name}.#{RbConfig::CONFIG["DLEXT"]}")
+    assert !File.exist?(so)
+    use_ui @ui do
+      path = Gem::Builder.new(@spec).build
+
+      @installer = Gem::Installer.new path
+      @installer.install
+    end
+    assert File.exist?(so), so
+  rescue
+    puts '-' * 78
+    puts File.read File.join(@gemhome, 'gems', 'a-2', 'Makefile')
+    puts '-' * 78
+    puts File.read File.join(@gemhome, 'gems', 'a-2', 'gem_make.out')
+    puts '-' * 78
+    raise
+  end
+
   def test_installation_satisfies_dependency_eh
     util_setup_install
 
@@ -1218,7 +1258,7 @@ load Gem.bin_path('a', 'executable', version)
   def test_dir
     util_setup_install
 
-    assert_match @installer.dir, %r!/installer/gems/a-2$!
+    assert_match %r!/installer/gems/a-2$!, @installer.dir
   end
 
   def old_ruby_required

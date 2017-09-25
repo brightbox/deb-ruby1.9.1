@@ -124,7 +124,9 @@ By default, this RubyGems will install gem as:
                       open release_notes do |io|
                         text = io.gets '==='
                         text << io.gets('===')
-                        text[0...-3].sub(/^# coding:.*?^=/m, '')
+                        text.force_encoding Encoding::UTF_8 if
+                          Object.const_defined? :Encoding
+                        text[0...-3].sub(/^# coding:.*?^=/mu, '')
                       end
                     else
                       "Oh-no! Unable to find release notes!"
@@ -165,7 +167,7 @@ By default, this RubyGems will install gem as:
                              end
 
         dest_file = File.join bin_dir, bin_file_formatted
-        bin_tmp_file = File.join Dir.tmpdir, bin_file
+        bin_tmp_file = File.join Dir.tmpdir, "#{bin_file}.#{$$}"
 
         begin
           bin = File.readlines bin_file
@@ -209,7 +211,10 @@ TEXT
     say "Installing RubyGems" if @verbose
 
     Dir.chdir 'lib' do
-      lib_files = Dir[File.join('**', '*rb')]
+      lib_files =  Dir[File.join('**', '*rb')]
+
+      # Be sure to include our SSL ca bundles
+      lib_files += Dir[File.join('**', '*pem')]
 
       lib_files.each do |lib_file|
         dest_file = File.join lib_dir, lib_file

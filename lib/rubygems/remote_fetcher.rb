@@ -176,7 +176,7 @@ class Gem::RemoteFetcher
 
       begin
         FileUtils.cp source_path, local_gem_path unless
-          File.expand_path(source_path) == File.expand_path(local_gem_path)
+          File.identical?(source_path, local_gem_path)
       rescue Errno::EACCES
         local_gem_path = source_uri.to_s
       end
@@ -321,13 +321,24 @@ class Gem::RemoteFetcher
 
     if https?(uri) and !connection.started? then
       configure_connection_for_https(connection)
+
+      # Don't refactor this with the else branch. We don't want the
+      # http-only code path to not depend on anything in OpenSSL.
+      #
+      begin
+        connection.start
+      rescue OpenSSL::SSL::SSLError, Errno::EHOSTDOWN => e
+        raise FetchError.new(e.message, uri)
+      end
+    else
+      begin
+        connection.start unless connection.started?
+      rescue Errno::EHOSTDOWN => e
+        raise FetchError.new(e.message, uri)
+      end
     end
 
-    connection.start unless connection.started?
-
     connection
-  rescue OpenSSL::SSL::SSLError, Errno::EHOSTDOWN => e
-    raise FetchError.new(e.message, uri)
   end
 
   def configure_connection_for_https(connection)
