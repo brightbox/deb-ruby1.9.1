@@ -1,3 +1,11 @@
+ruby1.9.1 (1:1.9.3.551-555bbox2~xenial1) xenial; urgency=medium
+
+  * Backported fixes for CVE-2017-0898, CVE-2017-10784, CVE-2017-14033, CVE-2017-14064
+  * Backported rubygems fixes for CVE-2017-0899, CVE-2017-0900 and
+    CVE-2017-0901
+
+ -- John Leach <john@johnleach.co.uk>  Tue, 26 Sep 2017 18:37:25 +0100
+
 ruby1.9.1 (1:1.9.3.551-3bbox1~xenial1) xenial; urgency=low
 
   * Add 20160626-openssl-test-updates.patch to fix openssl tests on Xenial
