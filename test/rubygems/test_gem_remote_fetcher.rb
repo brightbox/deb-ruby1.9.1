@@ -853,7 +853,7 @@ gems:
     end
 
     DIR = File.expand_path(File.dirname(__FILE__))
-    DH_PARAM = OpenSSL::PKey::DH.new(128)
+    DH_PARAM = OpenSSL::PKey::DH.new(1024)
 
     def start_ssl_server(config = {})
       null_logger = NilLog.new
