@@ -112,6 +112,7 @@ class TestGemCommandsInstallCommand < Gem::TestCase
 
   def test_no_user_install
     skip 'skipped on MS Windows (chmod has no effect)' if win_platform?
+    skip 'skipped in root privilege' if Process.uid == 0
 
     util_setup_fake_fetcher
     @cmd.options[:user_install] = false
