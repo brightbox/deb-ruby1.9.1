@@ -250,7 +250,12 @@ class Gem::ConfigFile
 
     return {} unless filename and File.exist? filename
     begin
-      YAML.load(File.read(filename))
+      content = Gem::SafeYAML.load(File.read(filename))
+      unless content.kind_of? Hash
+        warn "Failed to load #{filename} because it doesn't contain valid YAML hash"
+        return {}
+      end
+      return content
     rescue ArgumentError
       warn "Failed to load #{config_file_name}"
     rescue Errno::EACCES
