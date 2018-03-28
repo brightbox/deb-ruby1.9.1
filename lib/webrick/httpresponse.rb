@@ -20,6 +20,9 @@ module WEBrick
 
   class HTTPResponse
     attr_reader :http_version, :status, :header
+
+    class InvalidHeader < StandardError
+    end
     attr_reader :cookies
     attr_accessor :reason_phrase
 
@@ -230,14 +233,19 @@ module WEBrick
         data = status_line()
         @header.each{|key, value|
           tmp = key.gsub(/\bwww|^te$|\b\w/){ $&.upcase }
-          data << "#{tmp}: #{value}" << CRLF
+          data << "#{tmp}: #{check_header(value)}" << CRLF
         }
         @cookies.each{|cookie|
-          data << "Set-Cookie: " << cookie.to_s << CRLF
+          data << "Set-Cookie: " << check_header(cookie.to_s) << CRLF
         }
         data << CRLF
         _write_data(socket, data)
       end
+    rescue InvalidHeader => e
+      @header.clear
+      @cookies.clear
+      set_error e
+      retry
     end
 
     ##
@@ -294,6 +302,22 @@ module WEBrick
         host, port = @config[:ServerName], @config[:Port]
       end
 
+      error_body(backtrace, ex, host, port)
+    end
+
+    private
+
+    def check_header(header_value)
+      if header_value =~ /\r\n/
+        raise InvalidHeader
+      else
+        header_value
+      end
+    end
+
+    # :stopdoc:
+
+    def error_body(backtrace, ex, host, port)
       @body = ''
       @body << <<-_end_of_html_
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN">
