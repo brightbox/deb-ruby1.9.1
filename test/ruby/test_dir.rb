@@ -169,6 +169,9 @@ class TestDir < Test::Unit::TestCase
     assert_raise(Encoding::CompatibilityError) {Dir.glob(d)}
     m = Class.new {define_method(:to_path) {d}}
     assert_raise(Encoding::CompatibilityError) {Dir.glob(m.new)}
+    assert_raise(ArgumentError) {
+      Dir.glob([[@root, File.join(@root, "*")].join("\0")])
+    }
   end
 
   def test_glob_recursive
@@ -187,6 +190,7 @@ class TestDir < Test::Unit::TestCase
 
   def test_foreach
     assert_equal(Dir.foreach(@root).to_a.sort, %w(. ..) + (?a..?z).to_a)
+    assert_raise(ArgumentError) {Dir.foreach(@root+"\0").to_a}
   end
 
   def test_dir_enc
