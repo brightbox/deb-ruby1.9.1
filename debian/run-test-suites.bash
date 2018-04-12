@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-MAXFAIL=30
-MAXERR=3
+MAXFAIL=0
+MAXERR=0
 
 echo "*******************************************************************"
 echo "Running 'make test'"
