@@ -31,6 +31,12 @@ include /usr/share/cdbs/1/class/autotools.mk
 include /usr/share/cdbs/1/rules/patchsys-quilt.mk 
 
 DEB_AUTO_UPDATE_AUTOCONF = YES
+gcc48 := $(shell which gcc-4.8)
+ifdef gcc48
+CC = gcc-4.8 # same version must be in Depends of ruby1.9-dev
+else
+CC = gcc-5
+endif
 
 CFLAGS += -fno-strict-aliasing
 CXXFLAGS += -fno-strict-aliasing
