@@ -443,6 +443,7 @@ class TestSocket_UNIXSocket < Test::Unit::TestCase
 
   def test_getcred_ucred
     return if /linux/ !~ RUBY_PLATFORM
+    skip "doesn't work under fakeroot" if ENV.key? "FAKEROOTKEY"
     Dir.mktmpdir {|d|
       sockpath = "#{d}/sock"
       serv = Socket.unix_server_socket(sockpath)
@@ -473,6 +474,7 @@ class TestSocket_UNIXSocket < Test::Unit::TestCase
 
   def test_sendcred_ucred
     return if /linux/ !~ RUBY_PLATFORM
+    skip "doesn't work under fakeroot" if ENV.key? "FAKEROOTKEY"
     Dir.mktmpdir {|d|
       sockpath = "#{d}/sock"
       serv = Socket.unix_server_socket(sockpath)
@@ -530,6 +532,7 @@ class TestSocket_UNIXSocket < Test::Unit::TestCase
   end
 
   def test_getpeereid
+    skip "doesn't work under fakeroot" if ENV.key? "FAKEROOTKEY"
     Dir.mktmpdir {|d|
       path = "#{d}/sock"
       serv = Socket.unix_server_socket(path)
