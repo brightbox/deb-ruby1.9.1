@@ -4,6 +4,10 @@ set -e
 MAXFAIL=0
 MAXERR=0
 
+# required for the time_tz tests
+export LANG=C
+export LC_ALL=C
+
 echo "*******************************************************************"
 echo "Running 'make test'"
 echo
