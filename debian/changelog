@@ -1,4 +1,4 @@
-ruby1.9.1 (1:1.9.3.551-557bbox2~xenial1) xenial; urgency=medium
+ruby1.9.1 (1:1.9.3.551-557bbox4~xenial1) xenial; urgency=medium
 
   * Backported CVE-2017-17742: HTTP response splitting in
     WEBrick
@@ -9,8 +9,10 @@ ruby1.9.1 (1:1.9.3.551-557bbox2~xenial1) xenial; urgency=medium
     NUL byte in UNIXServer and UNIXSocket
   * Backported CVE-2018-8780: Unintentional directory traversal by
     poisoned NUL byte in Dir
+  * Fix a load of tests that were mostly failing due to launchpad build
+    environent issues
 
- -- John Leach <john@brightbox.co.uk>  Thu, 12 Apr 2018 22:07:55 +0100
+ -- John Leach <john@brightbox.co.uk>  Fri, 13 Apr 2018 22:51:55 +0100
 
 ruby1.9.1 (1:1.9.3.551-556bbox1~xenial1) xenial; urgency=medium
 
