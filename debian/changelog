@@ -1,4 +1,4 @@
-ruby1.9.1 (1:1.9.3.551-557bbox7~xenial1) xenial; urgency=medium
+ruby1.9.1 (1:1.9.3.551-557bbox8~xenial1) xenial; urgency=medium
 
   * Backported CVE-2017-17742: HTTP response splitting in
     WEBrick
@@ -11,10 +11,10 @@ ruby1.9.1 (1:1.9.3.551-557bbox7~xenial1) xenial; urgency=medium
     poisoned NUL byte in Dir
   * Fix a bunch of tests that were mostly failing due to launchpad build
     environent issues
+  * Update timetzone tests for new timezone data
   * Use correct compiler on Ubuntu Artful and up (gcc5).
-  * Build doesn't depend on ruby, fixes Bionic builds.
 
- -- John Leach <john@brightbox.co.uk>  Tue, 17 Apr 2018 15:30:11 +0100
+ -- John Leach <john@brightbox.co.uk>  Wed, 18 Apr 2018 16:50:11 +0100
 
 ruby1.9.1 (1:1.9.3.551-556bbox1~xenial1) xenial; urgency=medium
 
