@@ -7,6 +7,7 @@ MAXERR=0
 # required for the time_tz tests
 export LANG=C
 export LC_ALL=C
+export DEBIAN_DISABLE_RUBYGEMS_INTEGRATION=1
 
 echo "*******************************************************************"
 echo "Running 'make test'"
